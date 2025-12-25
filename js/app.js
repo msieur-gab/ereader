@@ -17,6 +17,11 @@ import { initGestures, updateCallbacks } from './gestures.js';
 
 let currentBookId = null;
 
+// Highlight menu state
+let activeHighlightId = null;
+let activeHighlightCfi = null;
+const DEFAULT_HIGHLIGHT_COLOR = '#ffeb3b';
+
 // ========================================
 // Library Functions
 // ========================================
@@ -154,6 +159,11 @@ async function openBook(bookId) {
     // Setup gestures
     setupReaderGestures();
 
+    // Load highlights for EPUB books
+    if (book.fileType === 'epub') {
+      await loadBookHighlights();
+    }
+
   } catch (error) {
     console.error('Error opening book:', error);
     ui.setError('Failed to open book: ' + error.message);
@@ -223,7 +233,9 @@ function backToLibrary() {
 function setupReaderGestures() {
   updateCallbacks({
     onSwipeLeft: () => navigateNext(),
-    onSwipeRight: () => navigatePrev()
+    onSwipeRight: () => navigatePrev(),
+    onSelectionStart: handleSelectionStart,
+    onSelectionEnd: handleSelectionEnd
   });
 }
 
@@ -354,6 +366,163 @@ function handleThemeChange() {
 }
 
 // ========================================
+// Highlighting Functions
+// ========================================
+
+/**
+ * Handle selection mode start (long press detected)
+ */
+function handleSelectionStart() {
+  if (ui.state.fileType !== 'epub') return;
+
+  // Enable text selection in EPUB iframe
+  epubReader.enableTextSelection();
+}
+
+/**
+ * Handle selection mode end (finger lifted after long press)
+ */
+async function handleSelectionEnd() {
+  if (ui.state.fileType !== 'epub') return;
+
+  // Get the current selection
+  const text = epubReader.getSelectedText();
+  const cfiRange = epubReader.getCfiFromSelection();
+
+  // Disable text selection
+  epubReader.disableTextSelection();
+
+  // If we have a valid selection, create a highlight
+  if (text && cfiRange && currentBookId) {
+    try {
+      // Save highlight to storage
+      const id = await storage.addHighlight(currentBookId, cfiRange, text, DEFAULT_HIGHLIGHT_COLOR);
+
+      // Apply highlight visually
+      epubReader.applyHighlight(cfiRange, DEFAULT_HIGHLIGHT_COLOR, id, handleHighlightClick);
+
+      // Clear the selection
+      epubReader.clearSelection();
+    } catch (error) {
+      console.error('Error creating highlight:', error);
+    }
+  }
+}
+
+/**
+ * Handle click on an existing highlight
+ * @param {Event} e - Click event
+ * @param {number} id - Highlight ID
+ * @param {string} cfiRange - CFI range
+ */
+function handleHighlightClick(e, id, cfiRange) {
+  e.stopPropagation();
+
+  activeHighlightId = id;
+  activeHighlightCfi = cfiRange;
+
+  // Position and show the highlight menu
+  const menu = document.getElementById('highlight-menu');
+  if (!menu) return;
+
+  // Position near the click
+  const x = e.clientX || (e.touches?.[0]?.clientX) || window.innerWidth / 2;
+  const y = e.clientY || (e.touches?.[0]?.clientY) || 100;
+
+  menu.style.left = `${x}px`;
+  menu.style.top = `${y}px`;
+  menu.hidden = false;
+
+  // Update active color indicator
+  updateHighlightMenuActiveColor();
+}
+
+/**
+ * Update the active color indicator in the highlight menu
+ */
+async function updateHighlightMenuActiveColor() {
+  if (!activeHighlightId) return;
+
+  const highlights = await storage.getHighlights(currentBookId);
+  const highlight = highlights.find(h => h.id === activeHighlightId);
+  if (!highlight) return;
+
+  const menu = document.getElementById('highlight-menu');
+  const colorButtons = menu?.querySelectorAll('.highlight-menu__colors button');
+  colorButtons?.forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.color === highlight.color);
+  });
+}
+
+/**
+ * Hide the highlight menu
+ */
+function hideHighlightMenu() {
+  const menu = document.getElementById('highlight-menu');
+  if (menu) {
+    menu.hidden = true;
+  }
+  activeHighlightId = null;
+  activeHighlightCfi = null;
+}
+
+/**
+ * Change highlight color
+ * @param {string} color - New color
+ */
+async function changeHighlightColor(color) {
+  if (!activeHighlightId || !activeHighlightCfi) return;
+
+  try {
+    // Update in storage
+    await storage.updateHighlight(activeHighlightId, { color });
+
+    // Remove old highlight and reapply with new color
+    epubReader.removeHighlight(activeHighlightCfi);
+    epubReader.applyHighlight(activeHighlightCfi, color, activeHighlightId, handleHighlightClick);
+
+    // Update active indicator
+    updateHighlightMenuActiveColor();
+  } catch (error) {
+    console.error('Error changing highlight color:', error);
+  }
+}
+
+/**
+ * Delete the currently selected highlight
+ */
+async function deleteActiveHighlight() {
+  if (!activeHighlightId || !activeHighlightCfi) return;
+
+  try {
+    // Remove from storage
+    await storage.deleteHighlight(activeHighlightId);
+
+    // Remove visual highlight
+    epubReader.removeHighlight(activeHighlightCfi);
+
+    // Hide menu
+    hideHighlightMenu();
+  } catch (error) {
+    console.error('Error deleting highlight:', error);
+  }
+}
+
+/**
+ * Load and apply highlights for the current book
+ */
+async function loadBookHighlights() {
+  if (!currentBookId || ui.state.fileType !== 'epub') return;
+
+  try {
+    const highlights = await storage.getHighlights(currentBookId);
+    epubReader.loadHighlights(highlights, handleHighlightClick);
+  } catch (error) {
+    console.error('Error loading highlights:', error);
+  }
+}
+
+// ========================================
 // Event Listeners
 // ========================================
 
@@ -429,6 +598,32 @@ function setupEventListeners() {
         cfi: li.dataset.cfi || null,
         pageNumber: li.dataset.page ? parseInt(li.dataset.page, 10) : null
       });
+    }
+  });
+
+  // Highlight menu events
+  const highlightMenu = document.getElementById('highlight-menu');
+  const highlightColors = highlightMenu?.querySelector('.highlight-menu__colors');
+  const highlightDelete = document.getElementById('highlight-delete');
+
+  // Color selection
+  highlightColors?.addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if (btn?.dataset.color) {
+      changeHighlightColor(btn.dataset.color);
+    }
+  });
+
+  // Delete highlight
+  highlightDelete?.addEventListener('click', () => {
+    deleteActiveHighlight();
+  });
+
+  // Hide menu when clicking outside
+  document.addEventListener('click', (e) => {
+    const menu = document.getElementById('highlight-menu');
+    if (menu && !menu.hidden && !menu.contains(e.target)) {
+      hideHighlightMenu();
     }
   });
 }

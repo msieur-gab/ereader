@@ -243,6 +243,22 @@
     </div>
   </dialog>
 
+  <!-- Highlight Menu (appears when tapping a highlight) -->
+  <div id="highlight-menu" class="highlight-menu" hidden>
+    <div class="highlight-menu__colors">
+      <button data-color="#ffeb3b" title="Yellow" aria-label="Yellow highlight"></button>
+      <button data-color="#a5d6a7" title="Green" aria-label="Green highlight"></button>
+      <button data-color="#90caf9" title="Blue" aria-label="Blue highlight"></button>
+      <button data-color="#f48fb1" title="Pink" aria-label="Pink highlight"></button>
+    </div>
+    <button id="highlight-delete" class="highlight-menu__delete" aria-label="Delete highlight">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="3 6 5 6 21 6"></polyline>
+        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+      </svg>
+    </button>
+  </div>
+
   <!-- External Libraries (UMD/IIFE builds) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/epubjs/dist/epub.min.js"></script>

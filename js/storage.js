@@ -12,6 +12,13 @@ db.version(1).stores({
   readingProgress: 'bookId'
 });
 
+db.version(2).stores({
+  books: '++id, title, author, fileType, fileName, fileSize, addedAt, lastReadAt',
+  bookmarks: '++id, bookId, cfi, pageNumber, label, createdAt',
+  highlights: '++id, bookId, cfiRange, color, createdAt',
+  readingProgress: 'bookId'
+});
+
 // ========================================
 // OPFS (Origin Private File System) Helpers
 // ========================================
@@ -169,8 +176,9 @@ export async function deleteBook(id) {
   // Delete from database
   await db.books.delete(id);
 
-  // Delete associated bookmarks and progress
+  // Delete associated bookmarks, highlights, and progress
   await db.bookmarks.where('bookId').equals(id).delete();
+  await db.highlights.where('bookId').equals(id).delete();
   await db.readingProgress.delete(id);
 }
 
@@ -226,6 +234,62 @@ export async function findBookmark(bookId, location) {
     return db.bookmarks.where({ bookId, pageNumber: location.pageNumber }).first();
   }
   return null;
+}
+
+// ========================================
+// Highlight Operations
+// ========================================
+
+/**
+ * Add a highlight
+ * @param {number} bookId - Book ID
+ * @param {string} cfiRange - CFI range for the highlight
+ * @param {string} text - Selected text (truncated for storage)
+ * @param {string} color - Highlight color (hex)
+ * @returns {Promise<number>} Highlight ID
+ */
+export async function addHighlight(bookId, cfiRange, text, color = '#ffeb3b') {
+  return db.highlights.add({
+    bookId,
+    cfiRange,
+    text: text.substring(0, 500),
+    color,
+    createdAt: Date.now()
+  });
+}
+
+/**
+ * Get all highlights for a book
+ * @param {number} bookId - Book ID
+ * @returns {Promise<Array>} Array of highlights
+ */
+export async function getHighlights(bookId) {
+  return db.highlights.where('bookId').equals(bookId).toArray();
+}
+
+/**
+ * Update a highlight
+ * @param {number} id - Highlight ID
+ * @param {Object} updates - Fields to update (color, etc.)
+ */
+export async function updateHighlight(id, updates) {
+  await db.highlights.update(id, updates);
+}
+
+/**
+ * Delete a highlight
+ * @param {number} id - Highlight ID
+ */
+export async function deleteHighlight(id) {
+  await db.highlights.delete(id);
+}
+
+/**
+ * Delete all highlights for a book
+ * @param {number} bookId - Book ID
+ */
+export async function deleteAllHighlights(bookId) {
+  await db.highlights.where('bookId').equals(bookId).delete();
 }
 
 // ========================================

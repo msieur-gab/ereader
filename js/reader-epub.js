@@ -297,6 +297,187 @@ export function isAtLocation(cfi) {
   return current?.cfi === cfi;
 }
 
+// ========================================
+// Text Selection & Highlighting
+// ========================================
+
+// Track applied highlights
+let appliedHighlights = [];
+
+/**
+ * Enable text selection in the EPUB iframe
+ */
+export function enableTextSelection() {
+  if (!rendition) return;
+  rendition.themes.override('user-select', 'text');
+  rendition.themes.override('-webkit-user-select', 'text');
+}
+
+/**
+ * Disable text selection in the EPUB iframe
+ */
+export function disableTextSelection() {
+  if (!rendition) return;
+  rendition.themes.override('user-select', 'none');
+  rendition.themes.override('-webkit-user-select', 'none');
+}
+
+/**
+ * Get the current selection from the EPUB iframe
+ * @returns {Selection|null}
+ */
+export function getSelection() {
+  if (!rendition) return null;
+  const manager = rendition.manager;
+  if (!manager) return null;
+
+  // Get the iframe's window
+  const views = manager.views?._views || [];
+  for (const view of views) {
+    if (view.window) {
+      const selection = view.window.getSelection();
+      if (selection && selection.toString().trim()) {
+        return selection;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Get the selected text
+ * @returns {string}
+ */
+export function getSelectedText() {
+  const selection = getSelection();
+  return selection ? selection.toString().trim() : '';
+}
+
+/**
+ * Get CFI range from current selection
+ * @returns {string|null}
+ */
+export function getCfiFromSelection() {
+  if (!rendition || !book) return null;
+
+  const selection = getSelection();
+  if (!selection || !selection.rangeCount) return null;
+
+  const range = selection.getRangeAt(0);
+  if (!range || range.collapsed) return null;
+
+  try {
+    // Get the current section/view
+    const manager = rendition.manager;
+    const views = manager?.views?._views || [];
+
+    for (const view of views) {
+      if (view.window && view.window.getSelection()?.toString().trim()) {
+        const section = view.section;
+        if (section) {
+          const cfiRange = section.cfiFromRange(range);
+          return cfiRange;
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error getting CFI from selection:', error);
+  }
+
+  return null;
+}
+
+/**
+ * Clear any text selection in the iframe
+ */
+export function clearSelection() {
+  if (!rendition) return;
+  const manager = rendition.manager;
+  if (!manager) return;
+
+  const views = manager.views?._views || [];
+  for (const view of views) {
+    if (view.window) {
+      view.window.getSelection()?.removeAllRanges();
+    }
+  }
+}
+
+/**
+ * Apply a highlight to the rendition
+ * @param {string} cfiRange - CFI range to highlight
+ * @param {string} color - Highlight color (hex)
+ * @param {number} id - Highlight ID from storage
+ * @param {Function} onClick - Click callback
+ */
+export function applyHighlight(cfiRange, color, id, onClick = null) {
+  if (!rendition) return;
+
+  try {
+    rendition.annotations.highlight(
+      cfiRange,
+      { id },
+      (e) => {
+        if (onClick) onClick(e, id, cfiRange);
+      },
+      'highlight',
+      {
+        fill: color,
+        'fill-opacity': '0.4',
+        'mix-blend-mode': 'multiply'
+      }
+    );
+
+    appliedHighlights.push({ id, cfiRange });
+  } catch (error) {
+    console.error('Error applying highlight:', error);
+  }
+}
+
+/**
+ * Remove a highlight from the rendition
+ * @param {string} cfiRange - CFI range of the highlight
+ */
+export function removeHighlight(cfiRange) {
+  if (!rendition) return;
+
+  try {
+    rendition.annotations.remove(cfiRange, 'highlight');
+    appliedHighlights = appliedHighlights.filter(h => h.cfiRange !== cfiRange);
+  } catch (error) {
+    console.error('Error removing highlight:', error);
+  }
+}
+
+/**
+ * Clear all highlights from the rendition
+ */
+export function clearHighlights() {
+  if (!rendition) return;
+
+  for (const h of appliedHighlights) {
+    try {
+      rendition.annotations.remove(h.cfiRange, 'highlight');
+    } catch (error) {
+      // Ignore errors when clearing
+    }
+  }
+  appliedHighlights = [];
+}
+
+/**
+ * Load and apply highlights from storage
+ * @param {Array} highlights - Array of highlight objects
+ * @param {Function} onClick - Click callback for highlights
+ */
+export function loadHighlights(highlights, onClick = null) {
+  clearHighlights();
+
+  for (const h of highlights) {
+    applyHighlight(h.cfiRange, h.color, h.id, onClick);
+  }
+}
+
 /**
  * Generate locations for progress tracking
  * @returns {Promise<void>}
@@ -319,6 +500,9 @@ export function getTotalLocations() {
  * Destroy the current book instance
  */
 export function destroy() {
+  // Clear highlights first
+  appliedHighlights = [];
+
   if (rendition) {
     rendition.destroy();
     rendition = null;

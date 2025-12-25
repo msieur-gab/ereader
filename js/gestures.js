@@ -9,11 +9,16 @@ import { state, toggleUI, showUI, hideUI } from './ui.js';
 const SWIPE_THRESHOLD = 50;   // Minimum distance for swipe
 const TAP_THRESHOLD = 10;     // Maximum movement for tap
 const SWIPE_TIMEOUT = 300;    // Maximum time for swipe gesture (ms)
+const LONG_PRESS_DELAY = 400; // Time to trigger selection mode (ms)
 
 // Touch tracking state
 let touchStartX = null;
 let touchStartY = null;
 let touchStartTime = null;
+
+// Long press / selection state
+let longPressTimer = null;
+let isSelectionMode = false;
 
 // Callbacks
 let onSwipeLeft = null;
@@ -21,6 +26,8 @@ let onSwipeRight = null;
 let onSwipeUp = null;
 let onSwipeDown = null;
 let onTap = null;
+let onSelectionStart = null;
+let onSelectionEnd = null;
 
 /**
  * Initialize gesture handling
@@ -32,11 +39,14 @@ export function initGestures(callbacks = {}) {
   onSwipeUp = callbacks.onSwipeUp || null;
   onSwipeDown = callbacks.onSwipeDown || null;
   onTap = callbacks.onTap || null;
+  onSelectionStart = callbacks.onSelectionStart || null;
+  onSelectionEnd = callbacks.onSelectionEnd || null;
 
   // Touch events on main element
   const reader = document.getElementById('reader');
   if (reader) {
     reader.addEventListener('touchstart', handleTouchStart, { passive: true });
+    reader.addEventListener('touchmove', handleTouchMove, { passive: true });
     reader.addEventListener('touchend', handleTouchEnd, { passive: false });
     reader.addEventListener('touchcancel', handleTouchCancel, { passive: true });
   }
@@ -61,6 +71,31 @@ function handleTouchStart(e) {
   touchStartX = touch.clientX;
   touchStartY = touch.clientY;
   touchStartTime = Date.now();
+
+  // Start long press timer for selection mode
+  clearTimeout(longPressTimer);
+  longPressTimer = setTimeout(() => {
+    isSelectionMode = true;
+    if (onSelectionStart) onSelectionStart();
+  }, LONG_PRESS_DELAY);
+}
+
+/**
+ * Handle touch move
+ * @param {TouchEvent} e
+ */
+function handleTouchMove(e) {
+  if (touchStartX === null || touchStartY === null) return;
+
+  const touch = e.touches[0];
+  const deltaX = Math.abs(touchStartX - touch.clientX);
+  const deltaY = Math.abs(touchStartY - touch.clientY);
+
+  // If moved before long press triggered, cancel selection mode
+  if (!isSelectionMode && (deltaX > TAP_THRESHOLD || deltaY > TAP_THRESHOLD)) {
+    clearTimeout(longPressTimer);
+  }
+  // If in selection mode, let the browser handle text selection
 }
 
 /**
@@ -68,7 +103,17 @@ function handleTouchStart(e) {
  * @param {TouchEvent} e
  */
 function handleTouchEnd(e) {
+  clearTimeout(longPressTimer);
+
   if (touchStartX === null || touchStartY === null) return;
+
+  // If in selection mode, trigger selection end callback
+  if (isSelectionMode) {
+    if (onSelectionEnd) onSelectionEnd();
+    isSelectionMode = false;
+    resetTouch();
+    return;
+  }
 
   const touch = e.changedTouches[0];
   const deltaX = touchStartX - touch.clientX;
@@ -121,6 +166,8 @@ function handleTouchEnd(e) {
  * Handle touch cancel
  */
 function handleTouchCancel() {
+  clearTimeout(longPressTimer);
+  isSelectionMode = false;
   resetTouch();
 }
 
@@ -252,6 +299,16 @@ export function updateCallbacks(callbacks) {
   if (callbacks.onSwipeUp !== undefined) onSwipeUp = callbacks.onSwipeUp;
   if (callbacks.onSwipeDown !== undefined) onSwipeDown = callbacks.onSwipeDown;
   if (callbacks.onTap !== undefined) onTap = callbacks.onTap;
+  if (callbacks.onSelectionStart !== undefined) onSelectionStart = callbacks.onSelectionStart;
+  if (callbacks.onSelectionEnd !== undefined) onSelectionEnd = callbacks.onSelectionEnd;
+}
+
+/**
+ * Check if currently in selection mode
+ * @returns {boolean}
+ */
+export function isInSelectionMode() {
+  return isSelectionMode;
 }
 
 /**
@@ -261,6 +318,7 @@ export function destroyGestures() {
   const reader = document.getElementById('reader');
   if (reader) {
     reader.removeEventListener('touchstart', handleTouchStart);
+    reader.removeEventListener('touchmove', handleTouchMove);
     reader.removeEventListener('touchend', handleTouchEnd);
     reader.removeEventListener('touchcancel', handleTouchCancel);
   }
@@ -271,5 +329,7 @@ export function destroyGestures() {
   document.removeEventListener('mousemove', handleMouseMove);
 
   clearTimeout(mouseTimer);
+  clearTimeout(longPressTimer);
+  isSelectionMode = false;
   resetTouch();
 }

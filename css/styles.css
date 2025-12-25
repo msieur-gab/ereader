@@ -775,6 +775,80 @@ body {
 }
 
 /* ----------------------------------------
+   Highlight Menu
+   ---------------------------------------- */
+.highlight-menu {
+  position: fixed;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  background-color: var(--bg-primary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border-color);
+  transform: translate(-50%, -100%);
+  margin-top: -8px;
+}
+
+.highlight-menu[hidden] {
+  display: none;
+}
+
+.highlight-menu__colors {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.highlight-menu__colors button {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform var(--transition-fast), border-color var(--transition-fast);
+}
+
+.highlight-menu__colors button[data-color="#ffeb3b"] { background-color: #ffeb3b; }
+.highlight-menu__colors button[data-color="#a5d6a7"] { background-color: #a5d6a7; }
+.highlight-menu__colors button[data-color="#90caf9"] { background-color: #90caf9; }
+.highlight-menu__colors button[data-color="#f48fb1"] { background-color: #f48fb1; }
+
+.highlight-menu__colors button:hover {
+  transform: scale(1.1);
+}
+
+.highlight-menu__colors button.active {
+  border-color: var(--text-primary);
+}
+
+.highlight-menu__delete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.highlight-menu__delete:hover {
+  color: #ef4444;
+  background-color: rgba(239, 68, 68, 0.1);
+}
+
+.highlight-menu__delete .icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* ----------------------------------------
    Scrollbar
    ---------------------------------------- */
 ::-webkit-scrollbar {
